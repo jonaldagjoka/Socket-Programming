@@ -1,0 +1,115 @@
+2. PSEUDOKOD PËR BROADCAST_SERVER.PY (Group Chat Server)
+ALGORITMI: Broadcast_Chat_Server
+
+KONSTANTE:
+    HOST ← '0.0.0.0'
+    PORT ← 5000
+    LOG_FILE ← "broadcast_chat_log.txt"
+
+VARIABLA GLOBALE:
+    clients ← LISTË_BOSHE  // Lista e klientëve: [(lidhja, username), ...]
+    clients_lock ← KRIJO_LOCK()  // Për thread safety
+
+FUNKSIONI encrypt(mesazh):
+    KTHE base64_encode(mesazh)
+
+FUNKSIONI decrypt(mesazh_i_enkriptuar):
+    KTHE base64_decode(mesazh_i_enkriptuar)
+
+FUNKSIONI log_message(mesazh):
+    HAP file LOG_FILE në "append"
+    SHKRUAJ mesazh + new_line
+    MBYLL file
+
+FUNKSIONI broadcast(mesazh, lidhja_dërguesi):
+    // Dërgon mesazh tek të gjithë PËRVEÇ dëruesit
+    BLLOKO clients_lock:
+        PËR ÇDO (lidhja_klienti, username_klienti) NË clients:
+            NËSe lidhja_klienti ≠ lidhja_dërguesi ATËHERË:
+                PROVO:
+                    mesazh_enkriptuar ← encrypt(mesazh)
+                    DËRGO mesazh_enkriptuar në lidhja_klienti
+                NË RAST GABIMI:
+                    HIQE (lidhja_klienti, username_klienti) nga clients
+
+FUNKSIONI handle_client(lidhja, adresa):
+    username ← NULL
+    
+    PROVO:
+        // Merr username
+        username_enkriptuar ← PRANO_DATA(lidhja, 1024)
+        username ← decrypt(username_enkriptuar)
+        PRINTO "[+] " + username + " u lidh nga " + adresa
+        
+        // Shto në listën e klientëve
+        BLLOKO clients_lock:
+            SHTO (lidhja, username) në clients
+        
+        // Njofto të gjithë për user të ri
+        mesazh_bashkimi ← username + " has joined the chat!"
+        broadcast(mesazh_bashkimi, lidhja)
+        log_message("[" + TIMESTAMP() + "] " + mesazh_bashkimi)
+        
+        // Dërgo mesazh mirëseardhje
+        numri_përdoruesve ← GJATËSIA(clients)
+        përshëndetje ← "Welcome to the chat, " + username + "! There are " + numri_përdoruesve + " users online."
+        DËRGO encrypt(përshëndetje) në lidhja
+        
+        // Loop për mesazhe
+        PËRSËRIT PËRGJITHMONË:
+            data ← PRANO_DATA(lidhja, 1024)
+            
+            NËSe data është boshe ATËHERË:
+                DAJË loop
+            
+            mesazh ← decrypt(data)
+            
+            NËSe mesazh == "exit" ATËHERË:
+                PRINTO "[-] " + username + " u shkëput"
+                DAJË loop
+            
+            // Log dhe broadcast mesazhin
+            timestamp ← TIMESTAMP()
+            mesazh_i_plotë ← "[" + timestamp + "] " + username + ": " + mesazh
+            PRINTO mesazh_i_plotë
+            log_message(mesazh_i_plotë)
+            
+            broadcast(username + ": " + mesazh, lidhja)
+            
+            // Konfirmo dërgimin
+            DËRGO encrypt("Message sent to all users") në lidhja
+    
+    NË FUND (cleanup):
+        NËSe username ≠ NULL ATËHERË:
+            // Hiq nga lista
+            BLLOKO clients_lock:
+                HIQE (lidhja, username) nga clients
+            
+            // Njofto largimin
+            mesazh_largimi ← username + " has left the chat"
+            broadcast(mesazh_largimi, lidhja)
+            log_message("[" + TIMESTAMP() + "] " + mesazh_largimi)
+        
+        MBYLL lidhja
+
+PROGRAMI KRYESOR:
+    PROVO:
+        server_socket ← KRIJO_SOCKET(TCP)
+        server_socket.SET_OPTION(REUSE_ADDRESS)
+        LIDH server_socket me (HOST, PORT)
+        server_socket.DËGJO()
+        
+        PRINTO "Server running on port " + PORT
+        
+        PËRSËRIT PËRGJITHMONË:
+            lidhja, adresa ← server_socket.PRANO_KLIENT()
+            thread ← KRIJO_THREAD(handle_client, (lidhja, adresa))
+            thread.NIS()
+    
+    NË RAST GABIMI:
+        PRINTO "Server error"
+    
+    NË FUND:
+        MBYLL server_socket
+
+FUNDI I ALGORITMIT

@@ -1,0 +1,149 @@
+3. PSEUDOKOD PËR PRIVATE_SERVER.PY (Private Messaging Server)
+ALGORITMI: Private_Messaging_Server
+
+KONSTANTE:
+    HOST ← '0.0.0.0'
+    PORT ← 5000
+    LOG_FILE ← "private_chat_log.txt"
+
+VARIABLA GLOBALE:
+    clients ← DICTIONARY_BOS  // {username: lidhja}
+    clients_lock ← KRIJO_LOCK()
+
+FUNKSIONI encrypt(mesazh):
+    KTHE base64_encode(mesazh)
+
+FUNKSIONI decrypt(mesazh_i_enkriptuar):
+    KTHE base64_decode(mesazh_i_enkriptuar)
+
+FUNKSIONI log_message(mesazh):
+    HAP file LOG_FILE në "append"
+    SHKRUAJ mesazh + new_line
+    MBYLL file
+
+FUNKSIONI send_message(lidhja, mesazh):
+    // Dërgon mesazh të enkriptuar tek një klient specifik
+    PROVO:
+        mesazh_enkriptuar ← encrypt(mesazh)
+        DËRGO mesazh_enkriptuar në lidhja
+    NË RAST GABIMI:
+        // Injoro gabimet
+
+FUNKSIONI handle_client(lidhja, adresa):
+    username ← NULL
+    
+    PROVO:
+        // Merr dhe verifiko username
+        username_enkriptuar ← PRANO_DATA(lidhja, 1024)
+        username ← decrypt(username_enkriptuar)
+        
+        BLLOKO clients_lock:
+            NËSe username EKZISTON NË clients ATËHERË:
+                send_message(lidhja, "Username already taken. Disconnecting.")
+                MBYLL lidhja
+                KTHE
+            clients[username] ← lidhja
+        
+        PRINTO "[+] " + username + " u lidh nga " + adresa
+        
+        // Krijo listë përdoruesish online
+        BLLOKO clients_lock:
+            lista_përdoruesve ← BASHKO(clients.KEYS() PËRVEÇ username, ", ")
+        
+        send_message(lidhja, "Welcome " + username + "! Online users: " + lista_përdoruesve)
+        send_message(lidhja, "Send messages as: @username message OR @all message")
+        
+        // Njofto të gjithë për përdorues të ri
+        BLLOKO clients_lock:
+            PËR ÇDO përdorues, lidhja_përdoruesit NË clients:
+                NËSe përdorues ≠ username ATËHERË:
+                    send_message(lidhja_përdoruesit, "[SYSTEM] " + username + " joined the chat")
+        
+        // Loop për mesazhe
+        PËRSËRIT PËRGJITHMONË:
+            data ← PRANO_DATA(lidhja, 1024)
+            
+            NËSe data është boshe ATËHERË:
+                DAJË loop
+            
+            mesazh ← decrypt(data)
+            
+            NËSe mesazh == "exit" ATËHERË:
+                PRINTO "[-] " + username + " u shkëput"
+                DAJË loop
+            
+            // Kontrollo formatin e mesazhit
+            NËSe mesazh fillon me "@" ATËHERË:
+                pjesët ← NDAJ mesazh në 2 pjesë (separator: " ")
+                
+                NËSe pjesët.GJATËSIA < 2 ATËHERË:
+                    send_message(lidhja, "Format: @username message")
+                    VAZHDO në iteracionin tjetër
+                
+                marrësi ← pjesët[0] PA "@"  // Hiq @ nga fillimi
+                përmbajtja ← pjesët[1]
+                
+                timestamp ← TIMESTAMP()
+                mesazh_i_plotë ← "[" + timestamp + "] " + username + " -> " + marrësi + ": " + përmbajtja
+                PRINTO mesazh_i_plotë
+                log_message(mesazh_i_plotë)
+                
+                BLLOKO clients_lock:
+                    NËSe marrësi == "all" ATËHERË:
+                        // Broadcast tek të gjithë
+                        PËR ÇDO përdorues, lidhja_përdoruesit NË clients:
+                            NËSe përdorues ≠ username ATËHERË:
+                                send_message(lidhja_përdoruesit, username + ": " + përmbajtja)
+                        send_message(lidhja, "Message sent to all users")
+                    
+                    PËRNDRYSHE NËSe marrësi EKZISTON NË clients ATËHERË:
+                        // Mesazh privat
+                        send_message(clients[marrësi], "[From " + username + "]: " + përmbajtja)
+                        send_message(lidhja, "Message sent to " + marrësi)
+                    
+                    PËRNDRYSHE:
+                        send_message(lidhja, "User '" + marrësi + "' not found")
+            
+            PËRNDRYSHE:
+                send_message(lidhja, "Format: @username message OR @all message")
+    
+    NË RAST GABIMI:
+        PRINTO "Error handling client " + adresa
+    
+    NË FUND (cleanup):
+        NËSe username ≠ NULL ATËHERË:
+            BLLOKO clients_lock:
+                NËSe username EKZISTON NË clients ATËHERË:
+                    FSHIJE clients[username]
+            
+            // Njofto të gjithë për largimin
+            BLLOKO clients_lock:
+                PËR ÇDO përdorues, lidhja_përdoruesit NË clients:
+                    send_message(lidhja_përdoruesit, "[SYSTEM] " + username + " left the chat")
+        
+        MBYLL lidhja
+
+PROGRAMI KRYESOR:
+    PROVO:
+        server_socket ← KRIJO_SOCKET(TCP)
+        server_socket.SET_OPTION(REUSE_ADDRESS)
+        LIDH server_socket me (HOST, PORT)
+        server_socket.DËGJO()
+        
+        PRINTO "Server running on port " + PORT
+        
+        PËRSËRIT PËRGJITHMONË:
+            lidhja, adresa ← server_socket.PRANO_KLIENT()
+            thread ← KRIJO_THREAD(handle_client, (lidhja, adresa))
+            thread.NIS()
+    
+    PËRVEÇ OSError SI gabim:
+        PRINTO "Server error: " + gabim
+    
+    PËRVEÇ KeyboardInterrupt:
+        PRINTO "Server shutting down..."
+    
+    NË FUND:
+        MBYLL server_socket
+
+FUNDI I ALGORITMIT

@@ -1,0 +1,69 @@
+1. PSEUDOKOD PËR SERVER.PY (Basic Chat Server)
+
+ALGORITMI: Basic_Chat_Server
+
+KONSTANTE:
+    HOST ← '0.0.0.0'
+    PORT ← 5000
+    LOG_FILE ← "chat_log.txt"
+
+FUNKSIONI encrypt(mesazh):
+    KTHE base64_encode(mesazh)
+
+FUNKSIONI decrypt(mesazh_i_enkriptuar):
+    KTHE base64_decode(mesazh_i_enkriptuar)
+
+FUNKSIONI log_message(mesazh):
+    HAP file LOG_FILE në modalitetin "append"
+    SHKRUAJ mesazh + new_line
+    MBYLL file
+
+FUNKSIONI handle_client(lidhja, adresa):
+    // Merr username nga klienti
+    username_enkriptuar ← PRANO_DATA(lidhja, 1024 bytes)
+    username ← decrypt(username_enkriptuar)
+    PRINTO "[+] " + username + " u lidh nga " + adresa
+    
+    // Loop për të pranuar mesazhe
+    PËRSËRIT PËRGJITHMONË:
+        data ← PRANO_DATA(lidhja, 1024 bytes)
+        
+        NËSe data është boshe ATËHERË:
+            DAJË loop
+        
+        mesazh ← decrypt(data)
+        
+        NËSe mesazh == "exit" ATËHERË:
+            PRINTO "[-] " + username + " u shkëput"
+            DAJË loop
+        
+        // Krijo timestamp dhe log mesazhin
+        timestamp ← MERR_KOHËN_AKTUALE()
+        mesazh_i_plotë ← "[" + timestamp + "] " + username + ": " + mesazh
+        
+        PRINTO mesazh_i_plotë
+        log_message(mesazh_i_plotë)
+        
+        // Dërgoj përgjigje klientit
+        përgjigje ← encrypt("Message received")
+        DËRGO përgjigje në lidhja
+    
+    MBYLL lidhja
+
+PROGRAMI KRYESOR:
+    // Krijo socket serveri
+    server_socket ← KRIJO_SOCKET(TCP)
+    LIDH server_socket me (HOST, PORT)
+    server_socket.DËGJO()
+    
+    PRINTO "Server running on port " + PORT
+    
+    // Prano klientë pafundësisht
+    PËRSËRIT PËRGJITHMONË:
+        lidhja, adresa ← server_socket.PRANO_KLIENT()
+        
+        // Krijo thread të ri për këtë klient
+        thread ← KRIJO_THREAD(target=handle_client, args=(lidhja, adresa))
+        thread.NIS()
+
+FUNDI I ALGORITMIT
