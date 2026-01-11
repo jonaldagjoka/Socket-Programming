@@ -2,7 +2,7 @@ import socket
 import threading
 import base64
 from datetime import datetime
-
+#Broadcast_Server
 HOST = '0.0.0.0'
 PORT = 5000
 LOG_FILE = "./broadcast_chat_log.txt"
